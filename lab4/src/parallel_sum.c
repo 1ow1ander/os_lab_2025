@@ -1,63 +1,96 @@
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <stdint.h>
 #include <pthread.h>
+#include <sys/time.h>
+#include "utils.h"
+#include "sum_lib.h"
 
-struct SumArgs {
-  int *array;
-  int begin;
-  int end;
+// gcc -o parallel_sum parallel_sum.c sum_lib.c utils.c -pthread -I.
+// ./parallel_sum --threads_num 4 --seed 42 --array_size 1000000
+
+struct ThreadArgs {
+    struct SumArgs sum_args;
+    int result;
 };
 
-int Sum(const struct SumArgs *args) {
-  int sum = 0;
-  // TODO: your code here 
-  return sum;
-}
-
 void *ThreadSum(void *args) {
-  struct SumArgs *sum_args = (struct SumArgs *)args;
-  return (void *)(size_t)Sum(sum_args);
+    struct ThreadArgs *thread_args = (struct ThreadArgs *)args;
+    thread_args->result = Sum(&thread_args->sum_args);
+    return NULL; // результат передастся через поле result
 }
 
 int main(int argc, char **argv) {
-  /*
-   *  TODO:
-   *  threads_num by command line arguments
-   *  array_size by command line arguments
-   *	seed by command line arguments
-   */
+    int threads_num = 0;
+    int array_size = 0;
+    int seed = 0;
 
-  uint32_t threads_num = 0;
-  uint32_t array_size = 0;
-  uint32_t seed = 0;
-  pthread_t threads[threads_num];
-
-  /*
-   * TODO:
-   * your code here
-   * Generate array here
-   */
-
-  int *array = malloc(sizeof(int) * array_size);
-
-  struct SumArgs args[threads_num];
-  for (uint32_t i = 0; i < threads_num; i++) {
-    if (pthread_create(&threads[i], NULL, ThreadSum, (void *)&args)) {
-      printf("Error: pthread_create failed!\n");
-      return 1;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--threads_num") == 0 && i+1 < argc) {
+            threads_num = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--seed") == 0 && i+1 < argc) {
+            seed = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--array_size") == 0 && i+1 < argc) {
+            array_size = atoi(argv[++i]);
+        }
     }
-  }
 
-  int total_sum = 0;
-  for (uint32_t i = 0; i < threads_num; i++) {
-    int sum = 0;
-    pthread_join(threads[i], (void **)&sum);
-    total_sum += sum;
-  }
+    if (threads_num <= 0 || array_size <= 0 || seed <= 0) {
+        printf("Usage: %s --threads_num N --seed S --array_size A\n", argv[0]);
+        return 1;
+    }
 
-  free(array);
-  printf("Total: %d\n", total_sum);
-  return 0;
+    int *array = malloc(sizeof(int) * array_size);
+    if (!array) {
+        perror("malloc");
+        return 1;
+    }
+    GenerateArray(array, array_size, seed);
+
+    // потоки
+    pthread_t threads[threads_num];
+    struct ThreadArgs args[threads_num];
+
+    // разбиваем массив на части
+    int base = array_size / threads_num;
+    int rem = array_size % threads_num;
+    int start = 0;
+    for (int i = 0; i < threads_num; i++) {
+        int chunk = base + (i < rem ? 1 : 0);
+        args[i].sum_args.array = array;
+        args[i].sum_args.begin = start;
+        args[i].sum_args.end = start + chunk;
+        start += chunk;
+    }
+
+    // засекаем время
+    struct timeval start_time;
+    gettimeofday(&start_time, NULL);
+
+    // создание потоков
+    for (int i = 0; i < threads_num; i++) {
+        if (pthread_create(&threads[i], NULL, ThreadSum, &args[i]) != 0) {
+            printf("Error: pthread_create failed for thread %d\n", i);
+            free(array);
+            return 1;
+        }
+    }
+
+    // ожидание завершения потоков и сумма результатов
+    int total_sum = 0;
+    for (int i = 0; i < threads_num; i++) {
+        pthread_join(threads[i], NULL);
+        total_sum += args[i].result;
+    }
+
+    // время
+    struct timeval finish_time;
+    gettimeofday(&finish_time, NULL);
+    double elapsed_ms = (finish_time.tv_sec - start_time.tv_sec) * 1000.0;
+    elapsed_ms += (finish_time.tv_usec - start_time.tv_usec) / 1000.0;
+
+    free(array);
+    printf("Total sum: %d\n", total_sum);
+    printf("Elapsed time: %f ms\n", elapsed_ms);
+    return 0;
 }

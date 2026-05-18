@@ -1,4 +1,7 @@
 
+// gcc -o process_memory process_memory.c
+// ./process_memory
+
 /* Program to display address information about the process */
 /* Adapted from Gray, J., program 1.4 */
 #include <stdio.h>
