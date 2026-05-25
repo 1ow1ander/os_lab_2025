@@ -7,6 +7,18 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+/* gcc tcpclient.c -o tcpclient
+ * gcc tcpserver.c -o tcpserver
+ * gcc udpclient.c -o udpclient
+ * gcc udpserver.c -o udpserver
+ * 
+ * ./tcpserver
+ * ./tcpclient 127.0.0.1 10050
+ * 
+ * ./udpserver
+ * ./udpclient 127.0.0.1
+ */
+
 #define BUFSIZE 100
 #define SADDR struct sockaddr
 #define SIZE sizeof(struct sockaddr_in)
